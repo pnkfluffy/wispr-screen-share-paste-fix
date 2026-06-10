@@ -1,0 +1,7 @@
+.build/
+.DS_Store
+dist/
+*.log
+*.app
+*.dSYM
+wispr-screen-share-paste-fix
