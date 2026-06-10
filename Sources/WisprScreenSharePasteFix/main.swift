@@ -383,7 +383,7 @@ final class CLIWatcher {
                 continue
             }
 
-            let text = String(cString: textPointer)
+            let text = Self.plainTextForTyping(String(cString: textPointer))
             let transcript = HistoryTranscript(
                 id: String(cString: idPointer),
                 timestamp: String(cString: timestampPointer),
@@ -450,7 +450,7 @@ final class CLIWatcher {
             let id = String(cString: idPointer)
             if id == lastUsedTranscriptEntityId { continue }
 
-            let text = String(cString: textPointer)
+            let text = Self.plainTextForTyping(String(cString: textPointer))
             guard Self.matchesExpectedLength(text, expectedTextLength) else { continue }
 
             return HistoryTranscript(
@@ -471,7 +471,9 @@ final class CLIWatcher {
     }
 
     private func emitAppleScriptType(_ text: String) {
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let normalized = Self.plainTextForTyping(text)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
         var commands: [String] = [
             "tell application \"Screen Sharing\" to activate",
             "delay 0.04",
@@ -490,7 +492,7 @@ final class CLIWatcher {
                 commands.append("  delay 0.005")
             }
             if lineIndex < lines.count - 1 {
-                commands.append("  key code 36")
+                commands.append("  key code 36 using shift down")
                 commands.append("  delay 0.005")
             }
         }
@@ -632,6 +634,88 @@ final class CLIWatcher {
 
     private static func matchesExpectedLength(_ text: String, _ expected: Int) -> Bool {
         text.count == expected || text.utf16.count == expected
+    }
+
+    private static func plainTextForTyping(_ text: String) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        guard looksLikeGeneratedHTML(normalized) else {
+            return decodeHTMLEntities(normalized)
+        }
+
+        var result = normalized
+        result = replacingPattern("(?i)<\\s*br\\s*/?\\s*>", in: result, with: "\n")
+        result = replacingPattern("(?i)</?\\s*(ol|ul|li|p|div|blockquote|h[1-6])\\b[^>]*>", in: result, with: "\n")
+        result = replacingPattern("(?s)<[^>]+>", in: result, with: "")
+        result = decodeHTMLEntities(result)
+
+        let lines = result
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func looksLikeGeneratedHTML(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        return [
+            "<ol", "</ol",
+            "<ul", "</ul",
+            "<li", "</li",
+            "<p", "</p",
+            "<div", "</div",
+            "<br"
+        ].contains { lowercased.contains($0) }
+    }
+
+    private static func replacingPattern(_ pattern: String, in text: String, with replacement: String) -> String {
+        text.replacingOccurrences(of: pattern, with: replacement, options: .regularExpression)
+    }
+
+    private static func decodeHTMLEntities(_ text: String) -> String {
+        var result = text
+        let namedEntities = [
+            "&nbsp;": " ",
+            "&amp;": "&",
+            "&lt;": "<",
+            "&gt;": ">",
+            "&quot;": "\"",
+            "&#39;": "'",
+            "&apos;": "'"
+        ]
+
+        for (entity, replacement) in namedEntities {
+            result = result.replacingOccurrences(of: entity, with: replacement)
+        }
+
+        guard let regex = try? NSRegularExpression(pattern: "&#(x[0-9A-Fa-f]+|[0-9]+);") else {
+            return result
+        }
+
+        let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+        for match in matches.reversed() {
+            guard let fullRange = Range(match.range(at: 0), in: result),
+                  let valueRange = Range(match.range(at: 1), in: result) else {
+                continue
+            }
+
+            let rawValue = String(result[valueRange])
+            let scalarValue: UInt32?
+            if rawValue.lowercased().hasPrefix("x") {
+                scalarValue = UInt32(rawValue.dropFirst(), radix: 16)
+            } else {
+                scalarValue = UInt32(rawValue, radix: 10)
+            }
+
+            if let scalarValue, let scalar = UnicodeScalar(scalarValue) {
+                result.replaceSubrange(fullRange, with: String(Character(scalar)))
+            }
+        }
+
+        return result
     }
 
     private static func chunks(_ text: String, size: Int) -> [String] {

@@ -86,7 +86,9 @@ used as a validation signal, but exact timestamp matches are accepted even when
 Wispr's stored formatted text length differs from the paste log length. The
 helper keeps Screen Sharing dictation-start context for up to 15 minutes so long
 dictations can still match the correct history row; a dictation start in another
-app clears that context.
+app clears that context. When typing multi-line text, the helper emits
+Shift+Return between lines instead of Return so chat-style text boxes do not
+treat line breaks as message sends.
 
 ## Permissions
 
