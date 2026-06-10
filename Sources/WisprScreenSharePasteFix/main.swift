@@ -31,6 +31,7 @@ final class CLIWatcher {
     private let providerPasteDelaySeconds = 0.06
     private let remoteClipboardSyncDelaySeconds = 0.85
     private let deleteBeforePaste = true
+    private let maxScreenSharingDictationAgeSeconds: TimeInterval = 15 * 60
     private let verboseLogging: Bool
 
     init(strategy: String) {
@@ -156,12 +157,16 @@ final class CLIWatcher {
         }
 
         if line.contains("Built active app info payload"),
-           line.contains("bundle=com.apple.ScreenSharing"),
            let startedAt = lastDictationStartedAt,
            let contextAt = logDate,
            abs(contextAt.timeIntervalSince(startedAt)) < 1.0 {
-            lastScreenSharingDictationStartedAt = startedAt
-            logVerbose("saw Screen Sharing dictation start at \(Self.dbTimestampString(from: startedAt))")
+            if line.contains("bundle=com.apple.ScreenSharing") {
+                lastScreenSharingDictationStartedAt = startedAt
+                logVerbose("saw Screen Sharing dictation start at \(Self.dbTimestampString(from: startedAt))")
+            } else {
+                lastScreenSharingDictationStartedAt = nil
+                logVerbose("cleared Screen Sharing dictation start for non-Screen Sharing context")
+            }
             return
         }
 
@@ -172,8 +177,10 @@ final class CLIWatcher {
             screenSharingCycleID = -1
             completedCycleID = -1
             expectedTextLength = Self.parseTextLength(from: line)
+            let pasteAt = logDate ?? Date()
             if let startedAt = lastScreenSharingDictationStartedAt,
-               Date().timeIntervalSince(startedAt) < 30 {
+               pasteAt.timeIntervalSince(startedAt) >= 0,
+               pasteAt.timeIntervalSince(startedAt) <= maxScreenSharingDictationAgeSeconds {
                 cycleDictationStartedAt = startedAt
             } else {
                 cycleDictationStartedAt = nil

@@ -83,7 +83,10 @@ The default strategy is `exact-type`. It uses Wispr's dictation-start timestamp
 and the `History` table timestamp to select the current transcript
 deterministically instead of guessing from the clipboard. Paste text length is
 used as a validation signal, but exact timestamp matches are accepted even when
-Wispr's stored formatted text length differs from the paste log length.
+Wispr's stored formatted text length differs from the paste log length. The
+helper keeps Screen Sharing dictation-start context for up to 15 minutes so long
+dictations can still match the correct history row; a dictation start in another
+app clears that context.
 
 ## Permissions
 
