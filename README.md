@@ -57,6 +57,8 @@ scripts/build-agent-app.sh
   - `~/Library/Application Support/Wispr Flow/flow.sqlite`
 - Converts Wispr-generated HTML list markup to plain text.
 - Uses Shift+Return between lines so chat boxes do not treat newlines as send.
+- Ignores stale Wispr log lines and only pastes while Screen Sharing is
+  currently frontmost.
 - Depends on Wispr Flow implementation details and may break after Wispr
   updates.
 

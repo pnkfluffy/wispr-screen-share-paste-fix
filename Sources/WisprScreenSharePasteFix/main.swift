@@ -25,6 +25,7 @@ final class CLIWatcher {
     private var cycleDictationStartedAt: Date?
     private var lastTrigger = Date.distantPast
     private var lastUsedTranscriptEntityId: String?
+    private var handledTranscriptEntityIds = Set<String>()
     private let strategy: String
     private let pollIntervalMicros: useconds_t = 50_000
     private let triggerDelayMicros: useconds_t = 50_000
@@ -32,6 +33,7 @@ final class CLIWatcher {
     private let remoteClipboardSyncDelaySeconds = 0.85
     private let deleteBeforePaste = true
     private let maxScreenSharingDictationAgeSeconds: TimeInterval = 15 * 60
+    private let maxWisprLogLineAgeSeconds: TimeInterval = 90
     private let verboseLogging: Bool
 
     init(strategy: String) {
@@ -150,6 +152,17 @@ final class CLIWatcher {
 
     private func handleLine(_ line: String) {
         let logDate = Self.parseWisprLogDate(from: line)
+        if let logDate {
+            let age = Date().timeIntervalSince(logDate)
+            if age > maxWisprLogLineAgeSeconds {
+                logVerbose("ignored stale Wispr log line age=\(String(format: "%.1f", age))s")
+                return
+            }
+            if age < -5 {
+                logVerbose("ignored future-dated Wispr log line age=\(String(format: "%.1f", age))s")
+                return
+            }
+        }
 
         if line.contains("Received IPC message: DictationStart") {
             lastDictationStartedAt = logDate ?? Date()
@@ -239,8 +252,9 @@ final class CLIWatcher {
         }
 
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<none>"
-        if frontmost != "com.apple.ScreenSharing" {
-            print("\(timestamp()) frontmost=\(frontmost); reactivating Screen Sharing")
+        guard frontmost == "com.apple.ScreenSharing" else {
+            print("\(timestamp()) skip: frontmost=\(frontmost); not Screen Sharing")
+            return
         }
         activateScreenSharing()
 
@@ -251,6 +265,11 @@ final class CLIWatcher {
                 print("\(timestamp()) skip: could not find exact current Wispr history text")
                 return
             }
+            guard !handledTranscriptEntityIds.contains(candidate.id) else {
+                print("\(timestamp()) skip: transcript already handled")
+                return
+            }
+            handledTranscriptEntityIds.insert(candidate.id)
             emitAppleScriptType(candidate.text)
         case "provider-applescript":
             print("\(timestamp()) using active Wispr delayed clipboard provider")
