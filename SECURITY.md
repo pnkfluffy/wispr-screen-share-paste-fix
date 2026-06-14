@@ -3,6 +3,8 @@
 This helper is local-only and does not make network requests. It requires
 macOS Accessibility permission because it watches for a specific Wispr Flow
 paste path and types into Apple Screen Sharing when that paste path fails.
+While Screen Sharing is frontmost, it also hides Wispr Flow's visible floating
+UI so that local overlay windows do not pause Screen Sharing frame updates.
 
 Please do not include dictated text, Wispr Flow databases, local logs, or other
 private user data in public issue reports. If a bug requires logs, reproduce it
