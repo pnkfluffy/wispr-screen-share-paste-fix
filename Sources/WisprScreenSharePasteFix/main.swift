@@ -35,7 +35,6 @@ final class CLIWatcher {
     private let providerPasteDelaySeconds = 0.06
     private let remoteClipboardSyncDelaySeconds = 0.85
     private let wisprUIHideIntervalSeconds: TimeInterval = 0.5
-    private let wisprUIHideDuringDictationSeconds: TimeInterval = 180
     private let wisprUIHideAfterPasteSeconds: TimeInterval = 8
     private let deleteBeforePaste = true
     private let maxScreenSharingDictationAgeSeconds: TimeInterval = 15 * 60
@@ -63,7 +62,6 @@ final class CLIWatcher {
         print("providerPasteDelaySeconds=\(providerPasteDelaySeconds)")
         print("remoteClipboardSyncDelaySeconds=\(remoteClipboardSyncDelaySeconds)")
         print("wisprUIHideIntervalSeconds=\(wisprUIHideIntervalSeconds)")
-        print("wisprUIHideDuringDictationSeconds=\(wisprUIHideDuringDictationSeconds)")
         print("wisprUIHideAfterPasteSeconds=\(wisprUIHideAfterPasteSeconds)")
         print("verboseLogging=\(verboseLogging)")
         print("Press Ctrl+C to stop.")
@@ -192,7 +190,6 @@ final class CLIWatcher {
            abs(contextAt.timeIntervalSince(startedAt)) < 1.0 {
             if line.contains("bundle=com.apple.ScreenSharing") {
                 lastScreenSharingDictationStartedAt = startedAt
-                setWisprUIHideWindow(seconds: wisprUIHideDuringDictationSeconds)
                 logVerbose("saw Screen Sharing dictation start at \(Self.dbTimestampString(from: startedAt))")
             } else {
                 lastScreenSharingDictationStartedAt = nil
