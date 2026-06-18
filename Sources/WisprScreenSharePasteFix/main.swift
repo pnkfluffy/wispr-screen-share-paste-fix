@@ -271,9 +271,8 @@ final class CLIWatcher {
         }
 
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<none>"
-        guard frontmost == screenSharingBundleIdentifier else {
-            print("\(timestamp()) skip: frontmost=\(frontmost); not Screen Sharing")
-            return
+        if frontmost != screenSharingBundleIdentifier {
+            print("\(timestamp()) frontmost=\(frontmost); activating Screen Sharing from Wispr paste context")
         }
         hideWisprUIIfScreenSharingFrontmost(ignoreThrottle: true)
         activateScreenSharing()
