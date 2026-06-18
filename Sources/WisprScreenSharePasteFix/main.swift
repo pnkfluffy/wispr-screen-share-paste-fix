@@ -26,6 +26,7 @@ final class CLIWatcher {
     private var lastTrigger = Date.distantPast
     private var lastWisprUIHideCheck = Date.distantPast
     private var lastWisprUIHideLog = Date.distantPast
+    private var wisprUIHideUntil = Date.distantPast
     private var lastUsedTranscriptEntityId: String?
     private var handledTranscriptEntityIds = Set<String>()
     private let strategy: String
@@ -34,6 +35,8 @@ final class CLIWatcher {
     private let providerPasteDelaySeconds = 0.06
     private let remoteClipboardSyncDelaySeconds = 0.85
     private let wisprUIHideIntervalSeconds: TimeInterval = 0.5
+    private let wisprUIHideDuringDictationSeconds: TimeInterval = 180
+    private let wisprUIHideAfterPasteSeconds: TimeInterval = 8
     private let deleteBeforePaste = true
     private let maxScreenSharingDictationAgeSeconds: TimeInterval = 15 * 60
     private let maxWisprLogLineAgeSeconds: TimeInterval = 90
@@ -43,6 +46,8 @@ final class CLIWatcher {
         "com.electron.wispr-flow",
         "com.electron.wispr-flow.accessibility-mac-app"
     ]
+    private let wisprFloatingWindowOwnerName = "Wispr Flow"
+    private let wisprFloatingWindowNames = Set(["Status"])
 
     init(strategy: String) {
         self.strategy = strategy
@@ -58,6 +63,8 @@ final class CLIWatcher {
         print("providerPasteDelaySeconds=\(providerPasteDelaySeconds)")
         print("remoteClipboardSyncDelaySeconds=\(remoteClipboardSyncDelaySeconds)")
         print("wisprUIHideIntervalSeconds=\(wisprUIHideIntervalSeconds)")
+        print("wisprUIHideDuringDictationSeconds=\(wisprUIHideDuringDictationSeconds)")
+        print("wisprUIHideAfterPasteSeconds=\(wisprUIHideAfterPasteSeconds)")
         print("verboseLogging=\(verboseLogging)")
         print("Press Ctrl+C to stop.")
         seekToEnd()
@@ -185,9 +192,11 @@ final class CLIWatcher {
            abs(contextAt.timeIntervalSince(startedAt)) < 1.0 {
             if line.contains("bundle=com.apple.ScreenSharing") {
                 lastScreenSharingDictationStartedAt = startedAt
+                setWisprUIHideWindow(seconds: wisprUIHideDuringDictationSeconds)
                 logVerbose("saw Screen Sharing dictation start at \(Self.dbTimestampString(from: startedAt))")
             } else {
                 lastScreenSharingDictationStartedAt = nil
+                wisprUIHideUntil = Date.distantPast
                 logVerbose("cleared Screen Sharing dictation start for non-Screen Sharing context")
             }
             return
@@ -228,6 +237,9 @@ final class CLIWatcher {
 
         if line.contains("Completed processing PasteText") {
             completedCycleID = cycleID
+            if screenSharingCycleID == cycleID || cycleDictationStartedAt != nil {
+                setWisprUIHideWindow(seconds: wisprUIHideAfterPasteSeconds)
+            }
             print("\(timestamp()) saw Wispr paste completed for cycle \(cycleID)")
             maybeTrigger()
         }
@@ -266,7 +278,7 @@ final class CLIWatcher {
             print("\(timestamp()) skip: frontmost=\(frontmost); not Screen Sharing")
             return
         }
-        hideWisprUIIfScreenSharingFrontmost(force: true)
+        hideWisprUIIfScreenSharingFrontmost(ignoreThrottle: true)
         activateScreenSharing()
 
         switch strategy {
@@ -316,14 +328,20 @@ final class CLIWatcher {
         usleep(40_000)
     }
 
-    private func hideWisprUIIfScreenSharingFrontmost(force: Bool = false) {
+    private func hideWisprUIIfScreenSharingFrontmost(ignoreThrottle: Bool = false) {
         let now = Date()
-        guard force || now.timeIntervalSince(lastWisprUIHideCheck) >= wisprUIHideIntervalSeconds else {
+        guard ignoreThrottle || now.timeIntervalSince(lastWisprUIHideCheck) >= wisprUIHideIntervalSeconds else {
             return
         }
         lastWisprUIHideCheck = now
 
         guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == screenSharingBundleIdentifier else {
+            return
+        }
+        guard now <= wisprUIHideUntil else {
+            return
+        }
+        guard visibleWisprFloatingWindowExists() else {
             return
         }
 
@@ -338,7 +356,31 @@ final class CLIWatcher {
             return
         }
         lastWisprUIHideLog = now
-        log("hid Wispr UI while Screen Sharing was frontmost")
+        log("hid Wispr floating UI while Screen Sharing was frontmost")
+    }
+
+    private func setWisprUIHideWindow(seconds: TimeInterval) {
+        wisprUIHideUntil = Date().addingTimeInterval(seconds)
+    }
+
+    private func visibleWisprFloatingWindowExists() -> Bool {
+        let options = CGWindowListOption(arrayLiteral: [.optionOnScreenOnly, .excludeDesktopElements])
+        guard let windows = CGWindowListCopyWindowInfo(options, CGWindowID(0)) as? [[String: Any]] else {
+            return false
+        }
+
+        return windows.contains { window in
+            guard let owner = window[kCGWindowOwnerName as String] as? String,
+                  owner == wisprFloatingWindowOwnerName,
+                  let name = window[kCGWindowName as String] as? String,
+                  wisprFloatingWindowNames.contains(name) else {
+                return false
+            }
+
+            let alpha = window[kCGWindowAlpha as String] as? Double ?? 0
+            let layer = window[kCGWindowLayer as String] as? Int ?? 0
+            return alpha > 0 && layer >= 1000
+        }
     }
 
     private func materializeCurrentWisprHistoryText() -> Bool {

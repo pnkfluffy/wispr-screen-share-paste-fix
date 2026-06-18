@@ -59,8 +59,8 @@ scripts/build-agent-app.sh
 - Uses Shift+Return between lines so chat boxes do not treat newlines as send.
 - Ignores stale Wispr log lines and only pastes while Screen Sharing is
   currently frontmost.
-- Hides Wispr Flow's floating UI while Screen Sharing is frontmost to avoid
-  local occlusion/redraw pauses.
+- During Screen Sharing dictation/paste, hides Wispr Flow's floating `Status`
+  overlay to avoid local occlusion/redraw pauses.
 - Depends on Wispr Flow implementation details and may break after Wispr
   updates.
 
